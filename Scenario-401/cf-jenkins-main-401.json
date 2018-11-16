@@ -1,0 +1,536 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "AWS CloudFormation Sample Template: Jenkins is web software you can use to CI/CD.  This template installs Jenkins configured by Chef",
+    "Parameters": {
+        "KeyName": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+        },
+        "InstanceType": {
+            "Description": "Jenkins EC2 instance type",
+            "Type": "String",
+            "Default": "t2.micro",
+            "AllowedValues": [
+                "t1.micro",
+                "t2.nano",
+                "t2.micro",
+                "t2.small",
+                "t2.medium",
+                "m1.small",
+                "m1.medium",
+                "m3.medium",
+                "c1.medium"
+            ],
+            "ConstraintDescription": "must be a valid EC2 instance type."
+        },
+        "DockerImage": {
+            "Default": "denny/jenkins_image:latest",
+            "Description": "Docker Image Name",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "64",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9:_/]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "JenkinsUser": {
+            "Description": "The Jenkins username",
+            "Type": "String",
+            "MinLength": "1",
+            "MaxLength": "16",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "JenkinsPassword": {
+            "NoEcho": "true",
+            "Description": "The Jenkins password",
+            "Type": "String",
+            "MinLength": "8",
+            "MaxLength": "41",
+            "AllowedPattern": "[a-zA-Z0-9]*",
+            "ConstraintDescription": "must contain only alphanumeric characters."
+        },
+        "SSHLocation": {
+            "Description": "The IP address range that can be used to SSH to the EC2 instances",
+            "Type": "String",
+            "MinLength": "9",
+            "MaxLength": "18",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+        }
+    },
+    "Mappings": {
+        "AWSInstanceType2Arch": {
+      "t1.micro"    : { "Arch" : "HVM64"  },
+      "t2.nano"     : { "Arch" : "HVM64"  },
+      "t2.micro"    : { "Arch" : "HVM64"  },
+      "t2.small"    : { "Arch" : "HVM64"  },
+      "t2.medium"   : { "Arch" : "HVM64"  },
+      "t2.large"    : { "Arch" : "HVM64"  },
+      "m1.small"    : { "Arch" : "HVM64"  },
+      "m1.medium"   : { "Arch" : "HVM64"  },
+      "m1.large"    : { "Arch" : "HVM64"  },
+      "m1.xlarge"   : { "Arch" : "HVM64"  },
+      "m2.xlarge"   : { "Arch" : "HVM64"  },
+      "m2.2xlarge"  : { "Arch" : "HVM64"  },
+      "m2.4xlarge"  : { "Arch" : "HVM64"  },
+      "m3.medium"   : { "Arch" : "HVM64"  },
+      "m3.large"    : { "Arch" : "HVM64"  },
+      "m3.xlarge"   : { "Arch" : "HVM64"  },
+      "m3.2xlarge"  : { "Arch" : "HVM64"  },
+      "m4.large"    : { "Arch" : "HVM64"  },
+      "m4.xlarge"   : { "Arch" : "HVM64"  },
+      "m4.2xlarge"  : { "Arch" : "HVM64"  },
+      "m4.4xlarge"  : { "Arch" : "HVM64"  },
+      "m4.10xlarge" : { "Arch" : "HVM64"  },
+      "c1.medium"   : { "Arch" : "HVM64"  },
+      "c1.xlarge"   : { "Arch" : "HVM64"  },
+      "c3.large"    : { "Arch" : "HVM64"  },
+      "c3.xlarge"   : { "Arch" : "HVM64"  },
+      "c3.2xlarge"  : { "Arch" : "HVM64"  },
+      "c3.4xlarge"  : { "Arch" : "HVM64"  },
+      "c3.8xlarge"  : { "Arch" : "HVM64"  },
+      "c4.large"    : { "Arch" : "HVM64"  },
+      "c4.xlarge"   : { "Arch" : "HVM64"  },
+      "c4.2xlarge"  : { "Arch" : "HVM64"  },
+      "c4.4xlarge"  : { "Arch" : "HVM64"  },
+      "c4.8xlarge"  : { "Arch" : "HVM64"  },
+      "g2.2xlarge"  : { "Arch" : "HVMG2"  },
+      "g2.8xlarge"  : { "Arch" : "HVMG2"  },
+      "r3.large"    : { "Arch" : "HVM64"  },
+      "r3.xlarge"   : { "Arch" : "HVM64"  },
+      "r3.2xlarge"  : { "Arch" : "HVM64"  },
+      "r3.4xlarge"  : { "Arch" : "HVM64"  },
+      "r3.8xlarge"  : { "Arch" : "HVM64"  },
+      "i2.xlarge"   : { "Arch" : "HVM64"  },
+      "i2.2xlarge"  : { "Arch" : "HVM64"  },
+      "i2.4xlarge"  : { "Arch" : "HVM64"  },
+      "i2.8xlarge"  : { "Arch" : "HVM64"  },
+      "d2.xlarge"   : { "Arch" : "HVM64"  },
+      "d2.2xlarge"  : { "Arch" : "HVM64"  },
+      "d2.4xlarge"  : { "Arch" : "HVM64"  },
+      "d2.8xlarge"  : { "Arch" : "HVM64"  },
+      "hi1.4xlarge" : { "Arch" : "HVM64"  },
+      "hs1.8xlarge" : { "Arch" : "HVM64"  },
+      "cr1.8xlarge" : { "Arch" : "HVM64"  },
+      "cc2.8xlarge" : { "Arch" : "HVM64"  }
+        },
+        "AWSInstanceType2NATArch": {
+            "t1.micro": {
+                "Arch": "NATPV64"
+            },
+            "t2.nano": {
+                "Arch": "NATHVM64"
+            },
+            "t2.micro": {
+                "Arch": "NATHVM64"
+            },
+            "t2.small": {
+                "Arch": "NATHVM64"
+            },
+            "t2.medium": {
+                "Arch": "NATHVM64"
+            },
+            "t2.large": {
+                "Arch": "NATHVM64"
+            },
+            "m1.small": {
+                "Arch": "NATPV64"
+            },
+            "m1.medium": {
+                "Arch": "NATPV64"
+            },
+            "m1.large": {
+                "Arch": "NATPV64"
+            },
+            "m1.xlarge": {
+                "Arch": "NATPV64"
+            },
+            "m2.xlarge": {
+                "Arch": "NATPV64"
+            },
+            "m2.2xlarge": {
+                "Arch": "NATPV64"
+            },
+            "m2.4xlarge": {
+                "Arch": "NATPV64"
+            },
+            "m3.medium": {
+                "Arch": "NATHVM64"
+            },
+            "m3.large": {
+                "Arch": "NATHVM64"
+            },
+            "m3.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "m3.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "m4.large": {
+                "Arch": "NATHVM64"
+            },
+            "m4.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "m4.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "m4.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "m4.10xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c1.medium": {
+                "Arch": "NATPV64"
+            },
+            "c1.xlarge": {
+                "Arch": "NATPV64"
+            },
+            "c3.large": {
+                "Arch": "NATHVM64"
+            },
+            "c3.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c3.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c3.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c3.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c4.large": {
+                "Arch": "NATHVM64"
+            },
+            "c4.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c4.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c4.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "c4.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "g2.2xlarge": {
+                "Arch": "NATHVMG2"
+            },
+            "g2.8xlarge": {
+                "Arch": "NATHVMG2"
+            },
+            "r3.large": {
+                "Arch": "NATHVM64"
+            },
+            "r3.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "r3.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "r3.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "r3.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "i2.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "i2.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "i2.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "i2.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "d2.xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "d2.2xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "d2.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "d2.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "hi1.4xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "hs1.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "cr1.8xlarge": {
+                "Arch": "NATHVM64"
+            },
+            "cc2.8xlarge": {
+                "Arch": "NATHVM64"
+            }
+        },
+        "AWSRegionArch2AMI": {
+    "us-east-1"        : {"HVM64" : "ami-0ff8a91507f77f867", "HVMG2" : "ami-0a584ac55a7631c0c"},
+      "us-west-2"        : {"HVM64" : "ami-a0cfeed8", "HVMG2" : "ami-0e09505bc235aa82d"},
+      "us-west-1"        : {"HVM64" : "ami-0bdb828fd58c52235", "HVMG2" : "ami-066ee5fd4a9ef77f1"},
+      "eu-west-1"        : {"HVM64" : "ami-047bb4163c506cd98", "HVMG2" : "ami-0a7c483d527806435"},
+      "eu-west-2"        : {"HVM64" : "ami-f976839e", "HVMG2" : "NOT_SUPPORTED"},
+      "eu-west-3"        : {"HVM64" : "ami-0ebc281c20e89ba4b", "HVMG2" : "NOT_SUPPORTED"},
+      "eu-central-1"     : {"HVM64" : "ami-0233214e13e500f77", "HVMG2" : "ami-06223d46a6d0661c7"},
+      "ap-northeast-1"   : {"HVM64" : "ami-06cd52961ce9f0d85", "HVMG2" : "ami-053cdd503598e4a9d"},
+      "ap-northeast-2"   : {"HVM64" : "ami-0a10b2721688ce9d2", "HVMG2" : "NOT_SUPPORTED"},
+      "ap-northeast-3"   : {"HVM64" : "ami-0d98120a9fb693f07", "HVMG2" : "NOT_SUPPORTED"},
+      "ap-southeast-1"   : {"HVM64" : "ami-08569b978cc4dfa10", "HVMG2" : "ami-0be9df32ae9f92309"},
+      "ap-southeast-2"   : {"HVM64" : "ami-09b42976632b27e9b", "HVMG2" : "ami-0a9ce9fecc3d1daf8"},
+      "ap-south-1"       : {"HVM64" : "ami-0912f71e06545ad88", "HVMG2" : "ami-097b15e89dbdcfcf4"},
+      "us-east-2"        : {"HVM64" : "ami-0b59bfac6be064b78", "HVMG2" : "NOT_SUPPORTED"},
+      "ca-central-1"     : {"HVM64" : "ami-0b18956f", "HVMG2" : "NOT_SUPPORTED"},
+      "sa-east-1"        : {"HVM64" : "ami-07b14488da8ea02a0", "HVMG2" : "NOT_SUPPORTED"},
+      "cn-north-1"       : {"HVM64" : "ami-0a4eaf6c4454eda75", "HVMG2" : "NOT_SUPPORTED"},
+      "cn-northwest-1"   : {"HVM64" : "ami-6b6a7d09", "HVMG2" : "NOT_SUPPORTED"}
+        }
+    },
+    "Resources": {
+        "JenkinsSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable HTTP access via port 8080 locked down to the load balancer + SSH access",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "8080",
+                        "ToPort": "8080",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": {
+                            "Ref": "SSHLocation"
+                        }
+                    }
+                ]
+            }
+        },
+        "Jenkins": {
+            "Type": "AWS::EC2::Instance",
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "jenkins_install": [
+                            "install_cfn",
+                            "setup_jenkins"
+                        ]
+                    },
+                    "install_cfn": {
+                        "files": {
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[main]\n",
+                                            "stack=",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            },
+                                            "\n",
+                                            "region=",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "[cfn-auto-reloader-hook]\n",
+                                            "triggers=post.update\n",
+                                            "path=Resources.Jenkins.Metadata.AWS::CloudFormation::Init\n",
+                                            "action=/opt/aws/bin/cfn-init -v ",
+                                            "         --stack ",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            "         --resource Jenkins ",
+                                            "         --configsets jenkins_install ",
+                                            "         --region ",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "setup_jenkins": {
+                        "packages": {
+                            "yum": {
+                                "tmux": []
+                            }
+                        },
+                        "sources": {
+                            "/home/ec2-user/chef/challenges-cloudformation-jenkins": "https://github.com/DennyZhang/challenges-cloudformation-jenkins/tarball/master"
+                        },
+                        "files": {
+                            "/home/ec2-user/run_chef_solo.sh": {
+                                "source": "https://raw.githubusercontent.com/DennyZhang/challenges-cloudformation-jenkins/master/utility/run_chef_solo.sh",
+                                "mode": 755,
+                                "owner": "ec2-user",
+                                "group": "ec2-user"
+                            }
+                        },
+                        "commands": {
+                            "01_install_chef": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "wget -O /tmp/chefdk.rpm",
+                                            " ",
+                                            "https://packages.chef.io/files/stable/chefdk/2.3.4/el/7/chefdk-2.3.4-1.el7.x86_64.rpm",
+                                            " ",
+                                            "&& sudo rpm -ivh /tmp/chefdk.rpm"
+                                        ]
+                                    ]
+                                }
+                            },
+                            "02_chef_install_jenkins": {
+                                "command": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "sudo bash -ex /home/ec2-user/run_chef_solo.sh ",
+                                            "\"jenkins-demo\"",
+                                            " ",
+                                            "\"/home/ec2-user/chef/challenges-cloudformation-jenkins/utility/chef/201/jenkins-demo\""
+                                        ]
+                                    ]
+                                },
+                                "test": "which chef-solo"
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "AWSRegionArch2AMI",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        {
+                            "Fn::FindInMap": [
+                                "AWSInstanceType2Arch",
+                                {
+                                    "Ref": "InstanceType"
+                                },
+                                "Arch"
+                            ]
+                        }
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "SecurityGroups": [
+                    {
+                        "Ref": "JenkinsSecurityGroup"
+                    }
+                ],
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",
+                                "yum update -y aws-cfn-bootstrap\n",
+                                "/opt/aws/bin/cfn-init -v ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource Jenkins ",
+                                "         --configsets jenkins_install ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "/opt/aws/bin/cfn-signal -e $? ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource Jenkins ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "WebsiteURL": {
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "Jenkins",
+                                "PublicDnsName"
+                            ]
+                        },
+                        ":8080"
+                    ]
+                ]
+            },
+            "Description": "Jenkins Website"
+        }
+    }
+}

@@ -464,9 +464,6 @@ Resources:
             - '
 
               '
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT15M
 Outputs:
   WebsiteURL:
     Value: !Join ['', ['http://', !GetAtt 'Jenkins.PublicDnsName', ':8080']]
